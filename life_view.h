@@ -1,6 +1,8 @@
+#pragma once
+
 #include <sstream>
 
-#include "life_model.hpp"
+#include "life_model.h"
 
 // int values for each action
 const int UNDEFINED = 0, NOTHING = 1, STEP = 2, DISPLAY = 3, EXIT = 4, HELP = 5;
@@ -110,5 +112,9 @@ public:
   show (ViewErrorStream& ves);
 
 private:
+  // performs an implementation specific command, or returns false if the
+  // command wasn't unique to this implementation
+  bool
+  performImpCommand (const Command& cmd);
   Model* m_model;
 };

@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -Wall -fdiagnostics-color=always -O3
-SRC = life.cpp life_cl_view.cpp
+SRC = life.cpp life_cl_view.cpp life_model.cpp
 OBJ = $(SRC:.cpp=.o)
 TARGET = life
 
