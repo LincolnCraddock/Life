@@ -5,8 +5,10 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <random>
 #include <set>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -119,6 +121,124 @@ struct motion_t
   }
 };
 
+struct direction_t
+{
+  unsigned char val = 0;
+
+  direction_t
+  operator+ (const direction_t& other) const
+  {
+    return { (unsigned char) (val + other.val) };
+  }
+
+  direction_t
+  operator- (const direction_t& other) const
+  {
+    return { (unsigned char) (val - other.val) };
+  }
+
+  direction_t&
+  operator+= (const direction_t& other)
+  {
+    val += other.val;
+    return *this;
+  }
+
+  direction_t&
+  operator-= (const direction_t& other)
+  {
+    val -= other.val;
+    return *this;
+  }
+
+  motion_t
+  getMotion ()
+  {
+    float angle = (float) val / 128.0 * M_PI;
+    return { std::cos (angle), std::sin (angle) };
+  }
+
+  motion_t
+  getMotion (float speed)
+  {
+    float angle = (float) val / 128.0 * M_PI;
+    return { speed * std::cos (angle), speed * std::sin (angle) };
+  }
+};
+
+struct polymer_shape_t
+{
+  uint16_t data = 0;
+};
+
+struct polymer_t
+{
+  uint32_t data = 0;
+
+  size_t
+  a ()
+  {
+    return (size_t) (data >> 8);
+  }
+
+  size_t
+  b ()
+  {
+    return (size_t) ((data >> 4) & 0x03);
+  }
+
+  size_t
+  c ()
+  {
+    return (size_t) (data & 0x03);
+  }
+
+  polymer_shape_t
+  toShape ()
+  {
+    uint16_t a = 0;
+    uint16_t b = 0;
+    uint16_t c = 0;
+    uint32_t p = data;
+    for (uint8_t next = p & 0x03; next != 0x03; p = p >> 2, next = p & 0x03)
+    {
+      switch (p)
+      {
+        case 0x00:
+          ++a;
+          break;
+        case 0x01:
+          ++b;
+          break;
+        case 0x02:
+          ++c;
+          break;
+      }
+    }
+    return { (uint16_t) ((a << 8) | (b << 4) | c) };
+  }
+
+  bool
+  operator== (const polymer_t& other) const
+  {
+    return data == other.data;
+  }
+};
+
+// Specialize std::hash for the Person struct within the std namespace
+namespace std
+{
+template<>
+struct hash<polymer_t>
+{
+  std::size_t
+  operator() (const polymer_t& p) const noexcept
+  {
+    return p.data;
+  }
+};
+}
+
 struct substance_t
 {
   static constexpr long MAX_VAL = std::numeric_limits<long>::max ();
@@ -126,7 +246,9 @@ struct substance_t
   long a = 0;
   long b = 0;
   long c = 0;
+  std::unordered_map<polymer_t, long> data;
 
+  // TODO
   substance_t
   operator+ (const substance_t& other) const
   {
@@ -250,20 +372,124 @@ struct substance_t
     c /= div;
     return *this;
   }
+
+  long
+  operator[] (polymer_t p)
+  {
+    auto iter = data.find (p);
+    if (iter != data.end ())
+      return iter->second;
+    else
+      return 0;
+  }
+
+  float
+  concentrationOf (polymer_t p)
+  {
+    // TODO
+    return (float) (*this)[p] / 10.0;
+  }
+};
+
+template<typename T>
+struct node_t
+{
+  std::vector<node_t<T>*> inputs {};
+  std::vector<float> weights {};
+  std::optional<float> signal;
+  float bias = 0.0f;
+  T val {};
+
+  float
+  pull ()
+  {
+    if (signal)
+      return *signal;
+    else
+    {
+      float sum = bias;
+      for (size_t i = 0; i < inputs.size (); ++i)
+        sum += inputs[i]->pull () * weights[i];
+      return sum;
+    }
+  }
+};
+
+struct epigenome_t
+{
+  std::vector<node_t<polymer_t>> inputLayer;
+  std::vector<node_t<polymer_t>> middleLayer;
+  std::vector<node_t<polymer_t>> outputLayer;
+
+  std::vector<std::pair<polymer_t, float>>
+  evaluate (substance_t& substance)
+  {
+    for (node_t<polymer_t>& inputNode : inputLayer)
+      inputNode.signal = substance.concentrationOf (inputNode.val);
+
+    for (node_t<polymer_t>& middleNode : middleLayer)
+      middleNode.signal = middleNode.pull ();
+
+    std::vector<std::pair<polymer_t, float>> rates;
+    rates.reserve (outputLayer.size ());
+    for (node_t<polymer_t>& outputNode : outputLayer)
+    {
+      float sum = outputNode.bias;
+      for (size_t i = 0; i < outputNode.inputs.size (); ++i)
+        sum += outputNode.inputs[i]->pull () * outputNode.weights[i];
+      rates.emplace_back (outputNode.val, sum);
+    }
+
+    // clear both layers' signals
+    for (node_t<polymer_t>& inputNode : inputLayer)
+      inputNode.signal = std::nullopt;
+    for (node_t<polymer_t>& middleNode : middleLayer)
+      middleNode.signal = std::nullopt;
+
+    return rates;
+  }
 };
 
 struct cell_t
 {
-  motion_t motion;
-  substance_t substance;
+  float speed = 0;
+  direction_t dir = { 0 };
+  long energy = 10;
+
+  substance_t substance {};
+  unsigned long timeOfLastXMove = 0;
+  unsigned long timeOfLastYMove = 0;
+
+  epigenome_t epigenome { {}, {}, {} };
+
+  motion_t
+  getMotion ()
+  {
+    return dir.getMotion (speed);
+  }
+
+  void
+  update ()
+  {
+    auto rates = epigenome.evaluate (substance);
+
+    for (auto& [polymer, rate] : rates)
+    {
+      long delta = static_cast<long> (rate);
+      long current = substance[polymer];
+      substance.data[polymer] =
+        std::clamp (current + delta, 0L, substance_t::MAX_VAL);
+    }
+    --energy;
+  }
 };
 
 struct square_t
 {
-  motion_t flow;
-  bool isFlowSrc;
-  substance_t sediment;
-  cell_t* cell;
+  motion_t flow {};
+  bool isFlowSrc = false;
+  substance_t sediment {};
+  cell_t* cell = nullptr;
 };
 
 inline std::ostream&
@@ -301,6 +527,15 @@ addMod (size_t a, int b, size_t mod)
   return (((int) a + b) % (int) mod + mod) % mod;
 };
 
+inline substance_t
+distributeSediment (substance_t s)
+{
+  return { s.a / 9 + std::min (s.a, s.b) / 72,
+           s.c > s.a ? (s.b > (s.c - s.a) ? (s.b - (s.c - s.a)) / 9 : 0)
+                     : s.b / 9 + std::min (s.b, s.a - s.c) / 72,
+           s.c > s.b ? (s.c - s.b) / 9 : 0 };
+}
+
 class Model
 {
 public:
@@ -319,4 +554,5 @@ public:
 private:
   settings_t m_settings;
   std::vector<std::vector<square_t>> m_world;
+  unsigned long m_time;
 };

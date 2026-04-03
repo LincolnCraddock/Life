@@ -1,12 +1,14 @@
 #include <charconv>
 #include <getopt.h>
 #include <iostream>
+#include <optional>
 #include <string.h>
 #include <string>
 #include <unistd.h>
 
 #include "life_model.h"
 #include "life_view.h"
+#include <fstream>
 
 #define PRINT_USAGE(EXEC_NAME)                                                 \
   do                                                                           \
@@ -43,22 +45,35 @@
    : (ERR_NUM) == 4 ? "should have positive, non-zero numeric arguments."      \
                     : "UNDEFINED ERROR")
 #define OPT_ERR(ERR_NUM)                                                       \
-  ((ERR_NUM) == 0 ? "isn't a recognized command-line option."                  \
-                  : "UNDEFINED ERROR")
+  ((ERR_NUM) == 0   ? "isn't a recognized command-line option."                \
+   : (ERR_NUM) == 1 ? "and its negative can't both be specified."              \
+                    : "UNDEFINED ERROR")
 #define NAME_OF_LONG_OPT(LONG_OPT_NUM)                                         \
   ((LONG_OPT_NUM) == 1   ? "flow-sources"                                      \
    : (LONG_OPT_NUM) == 2 ? "flow-sinks"                                        \
    : (LONG_OPT_NUM) == 3 ? "seed"                                              \
                          : "UNKNOWN OPTION")
 
+const std::string PATH_TO_CONFIG = ".life.yaml";
+
 // parse the command line args into settings
-settings_t
-parseSettings (int argc, char* argv[]);
+//
+// returns true if a config file is required
+bool
+parseSettingsFromArgs (int argc, char* argv[], settings_t& settings);
+
+// parse a config file into settings
+//
+// returns true if there was a config file to parse
+void
+parseSettingsFromConfig (const std::string& pathToFile, settings_t& settings);
 
 int
 main (int argc, char* argv[])
 {
-  settings_t settings = parseSettings (argc, argv);
+  settings_t settings {};
+  parseSettingsFromConfig (PATH_TO_CONFIG, settings);
+  parseSettingsFromArgs (argc, argv, settings);
   Model model (settings);
   View view (&model);
 
@@ -95,11 +110,9 @@ main (int argc, char* argv[])
   }
 }
 
-settings_t
-parseSettings (int argc, char* argv[])
+bool
+parseSettingsFromArgs (int argc, char* argv[], settings_t& settings)
 {
-  settings_t settings;
-
   /* State */
   int opt = '\0';
   int longOpt = 0;
@@ -107,6 +120,7 @@ parseSettings (int argc, char* argv[])
   int numArgsPrevOpt = 0;
 
   bool flowSinksSet = false;
+  std::optional<bool> useConfig {};
 
   /* Parse using getopt_long */
   option longOptions[] = { option { "help", 0, NULL, 'h' },
@@ -115,6 +129,8 @@ parseSettings (int argc, char* argv[])
                            option { "flow-sinks", 1, &longOpt, 2 },
                            option { "start-cells", 1, NULL, 'C' },
                            option { "seed", 1, &longOpt, 3 },
+                           option { "no-config", 0, &longOpt, 4 },
+                           option { "config", 2, &longOpt, 5 },
                            option { 0, 0, 0, 0 } };
   const int numLongOptions = 6;
 
@@ -218,7 +234,7 @@ parseSettings (int argc, char* argv[])
           }
           case '\0':
           {
-            /* Either arg for long opt arg without an opt */
+            /* Either arg for long opt or arg without an opt */
             switch (longOpt)
             {
               case 1:
@@ -346,6 +362,27 @@ parseSettings (int argc, char* argv[])
               EXIT_WITH_USAGE_ERROR ("seed", ARG_ERR (3));
             else if (ptr != end || ec != std::errc ())
               EXIT_WITH_USAGE_ERROR ("seed", ARG_ERR (2));
+            break;
+          }
+          case 4:
+          {
+            // TODO: finish
+            /* --no-config */
+            if (useConfig.value_or (false))
+              EXIT_WITH_USAGE_ERROR ("config", OPT_ERR (1));
+            settings = settings_t {};
+            useConfig = false;
+            break;
+          }
+          case 5:
+          {
+            /* --config */
+            if (!useConfig.value_or (true))
+              EXIT_WITH_USAGE_ERROR ("config", OPT_ERR (1));
+            if (!useConfig.has_value ())
+              optind = 1;
+            useConfig = true;
+            break;
           }
         }
         break;
@@ -353,7 +390,7 @@ parseSettings (int argc, char* argv[])
       case -1:
       {
         /* No more opts or args */
-        return settings;
+        return useConfig.value_or (false);
       }
       case ':':
       {
@@ -410,5 +447,14 @@ parseSettings (int argc, char* argv[])
           EXIT_WITH_USAGE_ERROR ((char) optopt, OPT_ERR (0));
       }
     }
+  }
+}
+
+void
+parseSettingsFromConfig (const std::string& pathToFile, settings_t& settings)
+{
+  std::ifstream file (pathToFile);
+  if (!file.is_open ())
+  {
   }
 }

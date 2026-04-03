@@ -101,7 +101,7 @@ printHelp ();
 // settings, etc.
 //
 // the string components should list the components to be printed
-// space-separated (e.g. "square 1 1 square 1 2 always start cells").
+// space-separated (e.g. "square 1 1 square 1 2 always start cells")
 void
 printModelComponents (const std::string& components, const Model& model);
 
@@ -293,6 +293,7 @@ View::performImpCommand (const Command& cmd)
       printModelComponents (cmd.args, *(m_model));
       return true;
     case VIEW:
+      // TODO: specify x, y, and size instead of a rect
       std::istringstream argStream (cmd.args);
       bool isValidRect = true;
       std::string nextWord;
@@ -371,16 +372,8 @@ View::performImpCommand (const Command& cmd)
                 {
                   if (r.isWellFormed ())
                   {
-                    // if (r.x1 == r.x2 || r.y1 == r.y2)
-                    // {
                     viewport = r;
                     printWorld (m_model->world ());
-                    // }
-                    // else
-                    // {
-                    // std::cout << RED_ESC << "The viewport is too thin."
-                    // << DEFAULT_COLOR_ESC << std::endl;
-                    // }
                   }
                   else
                   {
@@ -499,17 +492,22 @@ printHelp ()
 {
   std::cout
     << "Enter commands in the format: <Action1> [<Action2>]...\n"
-    << "\nActions:\n"
-    << "step, s        step the simulation forward 1 tick\n"
-    << "display, disp  print a 2D character representation of the world\n"
-    << "exit, quit     exit the program\n"
-    << "help           show this message\n"
-    << "\nSpecial Commands:\n"
-    << "always [<Action>]          execute <Action> after every command. No\n"
-    << "                           <Action> clears the actions\n"
-    << "<Action> <Number>          repeat <Action> <Number> times\n"
-    << "print <Item1> [<Item2>]... print items such as settings, squares,\n"
-    << "                           cells, etc." << std::endl;
+       "\n"
+       "Actions:\n"
+       "step, s        step the simulation forward 1 tick\n"
+       "display, disp  print a 2D character representation of the world\n"
+       "exit, quit     exit the program\n"
+       "help           show this message\n"
+       "view, v <X1 Y1 X2 Y2>  set the viewport to display the specified\n"
+       "coordinates"
+       "\n"
+       "Special Commands:\n"
+       "always [<Action>]           execute <Action> after every command. No\n"
+       "                            <Action> clears the actions\n"
+       "<Action> <Number>           repeat <Action> <Number> times\n"
+       "print <Item1> [<Item2>]...  print items such as settings, squares,\n"
+       "                            cells, etc."
+    << std::endl;
 }
 
 void

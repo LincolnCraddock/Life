@@ -19,10 +19,10 @@ flowFromSrc (point_t pos, point_t src, size_t width, size_t height);
 // fairly distribute an amount over some buckets (each with a starting value)
 // so that the bucket with the lowest value's value is maximized
 //
-// returns the value of the bucket with the lowest value, and any left over
-// amount that couldn't be distributed evenly
+// returns the value in each bucket at the end, and any left over amount that
+// couldn't be distributed evenly
 //
-// buckets must be non-empty and sorted; the starting values may be negative
+// buckets must be non-empty and sorted, and may have negative values
 std::pair<long, long>
 fairDistribute (long amt, const std::vector<long>& buckets);
 
@@ -30,17 +30,26 @@ fairDistribute (long amt, const std::vector<long>& buckets);
 void
 moveSediment (std::vector<std::vector<square_t>>& world);
 
-// move the sediment in each cell according to its attraction to other sediment
+// move the sediment in each cell according to that cell's flow
 void
-groupSediment (std::vector<std::vector<square_t>>& world);
+diffuseSediment2 (std::vector<std::vector<square_t>>& world);
 
-// spread the sediment out in all directions
+// move the sediment in each cell according to its attraction to other sediment
 void
 diffuseSediment (std::vector<std::vector<square_t>>& world);
 
+// update each cell's state
+void
+updateCells (std::vector<std::vector<square_t>>& world);
+
+// move each cell according to its motion
+void
+moveCells (std::vector<std::vector<square_t>>& world, unsigned long time);
+
 Model::Model (settings_t settings)
     : m_settings (settings),
-      m_world (settings.height, std::vector<square_t> (settings.width))
+      m_world (settings.height, std::vector<square_t> (settings.width)),
+      m_time (0)
 {
   /* Fix invalid settings */
   // TODO: accound for numSqrs overflowing
@@ -117,8 +126,14 @@ Model::Model (settings_t settings)
 void
 Model::step ()
 {
-  moveSediment (m_world);
-  groupSediment (m_world);
+  ++m_time;
+
+  // moveSediment (m_world);
+  // diffuseSediment (m_world);
+  diffuseSediment2 (m_world);
+
+  // updateCells (m_world);
+  moveCells (m_world, m_time);
 }
 
 const std::vector<std::vector<square_t>>&
@@ -200,11 +215,11 @@ moveSediment (std::vector<std::vector<square_t>>& world)
   size_t height = world.size ();
   size_t width = height > 0 ? world[0].size () : 0;
   std::vector<std::vector<substance_t>> newSediment (
-    world.size (), std::vector<substance_t> (world[0].size ()));
+    height, std::vector<substance_t> (width));
 
   /* Move sediment */
-  for (size_t y = 0; y < world.size (); ++y)
-    for (size_t x = 0; x < world[0].size (); ++x)
+  for (size_t y = 0; y < height; ++y)
+    for (size_t x = 0; x < width; ++x)
     {
       const float dx = world[y][x].flow.dx;
       const float dy = world[y][x].flow.dy;
@@ -228,7 +243,43 @@ moveSediment (std::vector<std::vector<square_t>>& world)
 }
 
 void
-groupSediment (std::vector<std::vector<square_t>>& world)
+diffuseSediment2 (std::vector<std::vector<square_t>>& world)
+{
+  size_t height = world.size ();
+  size_t width = height > 0 ? world[0].size () : 0;
+  std::vector<std::vector<substance_t>> newSediment (
+    height, std::vector<substance_t> (width));
+
+  std::vector<std::vector<substance_t>> distr (
+    height, std::vector<substance_t> (width));
+  for (size_t x = 0; x < width; ++x)
+    for (size_t y = 0; y < height; ++y)
+    {
+      distr[y][x] = distributeSediment (world[y][x].sediment);
+      newSediment[y][x] = world[y][x].sediment - distr[y][x] * 8l;
+    }
+
+  /* Diffuse sediment */
+  for (size_t x = 0; x < width; ++x)
+    for (size_t y = 0; y < height; ++y)
+    {
+      newSediment[y][x] +=
+        distr[addMod (y, -1, height)][addMod (x, -1, width)] +
+        distr[y][addMod (x, -1, width)] +
+        distr[addMod (y, 1, height)][addMod (x, -1, width)] +
+        distr[addMod (y, -1, height)][x] + distr[addMod (y, 1, height)][x] +
+        distr[addMod (y, -1, height)][addMod (x, 1, width)] +
+        distr[y][addMod (x, 1, width)] +
+        distr[addMod (y, 1, height)][addMod (x, 1, width)];
+    }
+
+  for (size_t x = 0; x < width; ++x)
+    for (size_t y = 0; y < height; ++y)
+      world[y][x].sediment = newSediment[y][x];
+}
+
+void
+diffuseSediment (std::vector<std::vector<square_t>>& world)
 {
   size_t height = world.size ();
   size_t width = height > 0 ? world[0].size () : 0;
@@ -276,7 +327,7 @@ groupSediment (std::vector<std::vector<square_t>>& world)
         for (short j = -1; j <= 1; ++j)
         {
           const substance_t w =
-            weights[addMod (y, i, width)][addMod (x, j, height)];
+            weights[addMod (y, i, height)][addMod (x, j, width)];
           newSediment[addMod (y, i, height)][addMod (x, j, width)] +=
             { std::max (amtA - w.a, 0L),
               std::max (amtB - w.b, 0L),
@@ -288,4 +339,67 @@ groupSediment (std::vector<std::vector<square_t>>& world)
   for (size_t x = 0; x < width; ++x)
     for (size_t y = 0; y < height; ++y)
       world[y][x].sediment = newSediment[y][x];
+}
+
+void
+updateCells (std::vector<std::vector<square_t>>& world)
+{
+  size_t height = world.size ();
+  size_t width = height > 0 ? world[0].size () : 0;
+  for (size_t y = 0; y < height; ++y)
+    for (size_t x = 0; x < width; ++x)
+    {
+      cell_t* cell = world[y][x].cell;
+      if (cell != nullptr)
+      {
+        cell->update ();
+        if (cell->energy <= 0)
+        {
+          free (world[y][x].cell);
+          world[y][x].cell = nullptr;
+        }
+      }
+    }
+}
+
+void
+moveCells (std::vector<std::vector<square_t>>& world, unsigned long time)
+{
+  // TODO: reimplement non-parallel cell movement
+  size_t height = world.size ();
+  size_t width = height > 0 ? world[0].size () : 0;
+  std::vector<std::vector<cell_t*>> newCells (height,
+                                              std::vector<cell_t*> (width));
+
+  /* Move cells */
+  for (size_t y = 0; y < height; ++y)
+    for (size_t x = 0; x < width; ++x)
+    {
+      cell_t* cell = world[y][x].cell;
+      if (cell != nullptr)
+      {
+        motion_t cellMove = cell->getMotion () + world[y][x].flow;
+
+        short dx = time - cell->timeOfLastXMove < 1 / cellMove.dx ? 0
+                   : cellMove.dx == 0                             ? 0
+                   : std::signbit (cellMove.dx)                   ? -1
+                                                                  : 1;
+        short dy = time - cell->timeOfLastYMove < 1 / cellMove.dy ? 0
+                   : cellMove.dy == 0                             ? 0
+                   : std::signbit (cellMove.dy)                   ? -1
+                                                                  : 1;
+        if (world[addMod (y, dy, height)][addMod (x, dx, width)].cell !=
+              nullptr ||
+            newCells[addMod (y, dy, height)][addMod (x, dx, width)] != nullptr)
+        {
+          dx = 0;
+          dy = 0;
+        }
+        newCells[addMod (y, dy, height)][addMod (x, dx, width)] = cell;
+      }
+    }
+
+  for (size_t x = 0; x < width; ++x)
+    for (size_t y = 0; y < height; ++y)
+      world[y][x].cell = newCells[y][x];
 }
