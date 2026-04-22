@@ -674,7 +674,18 @@ genConfigFromSettings (const std::string& pathToFile,
   if (!fileWriter.is_open ())
     return false;
 
-  fileWriter << txt << "\n";
+  fileWriter
+    << "# Automatically generated config file for Life\n"
+    << "#\n"
+    << "# The settings specified below will automatically be applied to the\n"
+    << "#  simulation.\n"
+    << "# To specify which config file to apply, use --config=<path> where\n"
+    << "#  <path> is the path of the config to use.\n"
+    << "# To regenerate the config file, use --gen-config.\n"
+    << "# Specifying --config and --gen-config together will use the config\n"
+    << "#  file from --config to generate the new config file.\n"
+    << "\n"
+    << txt << "\n";
   if (!fileWriter)
     return false;
 

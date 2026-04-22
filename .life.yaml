@@ -1,3 +1,13 @@
+# Automatically generated config file for Life
+#
+# The settings specified below will automatically be applied to the
+#  simulation.
+# To specify which config file to apply, use --config=<path> where
+#  <path> is the path of the config to use.
+# To regenerate the config file, use --gen-config.
+# Specifying --config and --gen-config together will use the config
+#  file from --config to generate the new config file.
+
 version: 1.0.0
 width: 25
 height: 25
