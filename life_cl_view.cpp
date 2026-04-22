@@ -9,21 +9,7 @@
 #include <tuple>
 
 #include "life_view.h"
-
-#define CURSOR_UP_ESC ("\u001b[1A")
-
-#define COLOR_ESC(R, G, B)                                                     \
-  ("\u001b[38;2;" + std::to_string (R) + ";" + std::to_string (G) + ";" +      \
-   std::to_string (B) + "m")
-#define BLACK_ESC ("\u001b[30m")
-#define RED_ESC ("\u001b[31m")
-#define DEFAULT_COLOR_ESC ("\u001b[39m")
-#define BG_COLOR_ESC(R, G, B)                                                  \
-  ("\u001b[48;2;" + std::to_string (R) + ";" + std::to_string (G) + ";" +      \
-   std::to_string (B) + "m")
-#define DEFAULT_BG_COLOR_ESC ("\u001b[49m")
-#define BOLD_ESC ("\u001b[1m")
-#define DEFAULT_STYLE_ESC ("\u001b[22m")
+#include "util.h"
 
 #define MOTION_TO_STR(MOTION)                                                  \
   ((MOTION).dx == 0 && (MOTION).dy == 0                                        \
@@ -45,7 +31,9 @@
                     155)
 
 // int values for CLI specific actions
-const int ALWAYS = -1, PRINT = -2, VIEW = -3;
+const int ALWAYS = -1, PRINT = -2, VIEW = -3, CLEAR = -4, CONTINUE = -5;
+
+bool shouldIContinue = false;
 
 // names for each action
 const std::map<std::string, int> actionTable = {
@@ -54,7 +42,8 @@ const std::map<std::string, int> actionTable = {
   { "help", HELP },     { "nothing", NOTHING }, { "always", ALWAYS },
   { "print", PRINT },   { "p", PRINT },         { "examine", PRINT },
   { "x", PRINT },       { "inspect", PRINT },   { "view", VIEW },
-  { "viewport", VIEW }, { "v", VIEW },          { "window", VIEW }
+  { "viewport", VIEW }, { "v", VIEW },          { "window", VIEW },
+  { "clear", CLEAR },   { "clr", CLEAR },       { "continue", CONTINUE }
 };
 
 // canonical names for each action
@@ -122,23 +111,31 @@ View::ViewInputStream::operator>> (Command& cmd)
 {
   if (commands.empty ())
   {
-    /* Parse more input from user */
-    std::string input;
-    std::getline (std::cin, input);
-
-    if (input == "")
+    if (shouldIContinue)
     {
-      input = lastInput;
-      std::cout << CURSOR_UP_ESC << BLACK_ESC << lastInput << DEFAULT_COLOR_ESC
-                << std::endl;
+      for (Command c : alwaysDo)
+        commands.push (c);
     }
+    else
+    {
+      /* Parse more input from user */
+      std::string input;
+      std::getline (std::cin, input);
 
-    for (Command c : parseCommands (input))
-      commands.push (c);
-    for (Command c : alwaysDo)
-      commands.push (c);
+      if (input == "")
+      {
+        input = lastInput;
+        std::cout << CURSOR_UP_ESC << BLACK_ESC << lastInput
+                  << DEFAULT_COLOR_ESC << std::endl;
+      }
 
-    lastInput = input;
+      for (Command c : parseCommands (input))
+        commands.push (c);
+      for (Command c : alwaysDo)
+        commands.push (c);
+
+      lastInput = input;
+    }
   }
 
   cmd = commands.front ();
@@ -281,6 +278,7 @@ View::performImpCommand (const Command& cmd)
   switch (cmd.action)
   {
     case ALWAYS:
+    {
       std::cout << BLACK_ESC << "always:" << cmd.args << DEFAULT_COLOR_ESC
                 << std::endl;
       alwaysDo = parseCommands (cmd.args);
@@ -289,10 +287,14 @@ View::performImpCommand (const Command& cmd)
       while (!commands.empty ())
         commands.pop ();
       return true;
+    }
     case PRINT:
+    {
       printModelComponents (cmd.args, *(m_model));
       return true;
+    }
     case VIEW:
+    {
       // TODO: specify x, y, and size instead of a rect
       std::istringstream argStream (cmd.args);
       bool isValidRect = true;
@@ -426,6 +428,17 @@ View::performImpCommand (const Command& cmd)
           << DEFAULT_COLOR_ESC << std::endl;
       }
       return true;
+    }
+    case CLEAR:
+    {
+      std::cout << CLEAR_ESC << std::endl;
+      return true;
+    }
+    case CONTINUE:
+    {
+      shouldIContinue = true;
+      return true;
+    }
   }
   return false;
 }

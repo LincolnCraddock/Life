@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+struct cell_t;
+
 struct settings_t
 {
   size_t width = 25;
@@ -389,6 +391,129 @@ struct substance_t
     // TODO
     return (float) (*this)[p] / 10.0;
   }
+
+  float
+  concentrationOf (char type)
+  {
+    if (type == 'a')
+      return a / ((float) a + 1.0f + b + c);
+    else if (type == 'b')
+      return b / ((float) a + 1.0f + b + c);
+    else if (type == 'c')
+      return c / ((float) a + 1.0f + b + c);
+    return 0.0f;
+  }
+};
+
+// template<typename T>
+// struct node_t
+// {
+//   std::vector<node_t<T>*> inputs {};
+//   std::vector<float> weights {};
+//   std::optional<float> signal;
+//   float bias = 0.0f;
+//   T val {};
+
+//   float
+//   pull ()
+//   {
+//     if (signal)
+//       return *signal;
+//     else
+//     {
+//       float sum = bias;
+//       for (size_t i = 0; i < inputs.size (); ++i)
+//         sum += inputs[i]->pull () * weights[i];
+//       return sum;
+//     }
+//   }
+// };
+
+// struct epigenome_t
+// {
+//   std::vector<node_t<polymer_t>> inputLayer;
+//   std::vector<node_t<polymer_t>> middleLayer;
+//   std::vector<node_t<polymer_t>> outputLayer;
+
+//   std::vector<std::pair<polymer_t, float>>
+//   evaluate (substance_t& substance)
+//   {
+//     // inputLayer should have size 3
+//     char type = 'a';
+//     for (node_t<polymer_t>& inputNode : inputLayer)
+//       inputNode.signal = substance.concentrationOf (type++);
+
+//     for (node_t<polymer_t>& middleNode : middleLayer)
+//       middleNode.signal = middleNode.pull ();
+
+//     std::vector<std::pair<polymer_t, float>> rates;
+//     rates.reserve (outputLayer.size ());
+//     for (node_t<polymer_t>& outputNode : outputLayer)
+//     {
+//       float sum = outputNode.bias;
+//       for (size_t i = 0; i < outputNode.inputs.size (); ++i)
+//         sum += outputNode.inputs[i]->pull () * outputNode.weights[i];
+//       rates.emplace_back (outputNode.val, sum);
+//     }
+
+//     // clear both layers' signals
+//     for (node_t<polymer_t>& inputNode : inputLayer)
+//       inputNode.signal = std::nullopt;
+//     for (node_t<polymer_t>& middleNode : middleLayer)
+//       middleNode.signal = std::nullopt;
+
+//     return rates;
+//   }
+// };
+
+// struct cell_t
+// {
+//   // float speed = 0;
+//   // direction_t dir = { 0 };
+//   motion_t velocity;
+//   long energy = 10;
+
+//   substance_t substance {};
+//   unsigned long timeOfLastXMove = 0;
+//   unsigned long timeOfLastYMove = 0;
+
+//   epigenome_t epigenome { {}, {}, {} };
+
+//   // motion_t
+//   // getMotion ()
+//   // {
+//   //   return dir.getMotion (speed);
+//   // }
+
+//   void
+//   update ()
+//   {
+//     auto rates = epigenome.evaluate (substance);
+
+//     for (auto& [polymer, rate] : rates)
+//     {
+//       if (polymer.a () > 0)
+//         velocity.dx += rate;
+//       else if (polymer.b ())
+//         velocity.dy += rate;
+//       // TODO: like polymer rates to other actions instead
+//     }
+//     --energy;
+//   }
+
+//   void
+//   randomizeEpigenome(epigenome_t& parentEpigenome)
+//   {
+//     // TODO
+//   }
+// };
+
+struct square_t
+{
+  motion_t flow {};
+  bool isFlowSrc = false;
+  substance_t sediment {};
+  cell_t* cell = nullptr;
 };
 
 template<typename T>
@@ -410,7 +535,8 @@ struct node_t
       float sum = bias;
       for (size_t i = 0; i < inputs.size (); ++i)
         sum += inputs[i]->pull () * weights[i];
-      return sum;
+      // CHANGED: tanh activation so middle layer is nonlinear
+      return std::tanh (sum);
     }
   }
 };
@@ -424,8 +550,9 @@ struct epigenome_t
   std::vector<std::pair<polymer_t, float>>
   evaluate (substance_t& substance)
   {
+    char type = 'a';
     for (node_t<polymer_t>& inputNode : inputLayer)
-      inputNode.signal = substance.concentrationOf (inputNode.val);
+      inputNode.signal = substance.concentrationOf (type++);
 
     for (node_t<polymer_t>& middleNode : middleLayer)
       middleNode.signal = middleNode.pull ();
@@ -440,7 +567,6 @@ struct epigenome_t
       rates.emplace_back (outputNode.val, sum);
     }
 
-    // clear both layers' signals
     for (node_t<polymer_t>& inputNode : inputLayer)
       inputNode.signal = std::nullopt;
     for (node_t<polymer_t>& middleNode : middleLayer)
@@ -452,44 +578,173 @@ struct epigenome_t
 
 struct cell_t
 {
-  float speed = 0;
-  direction_t dir = { 0 };
+  motion_t velocity;
   long energy = 10;
-
   substance_t substance {};
   unsigned long timeOfLastXMove = 0;
   unsigned long timeOfLastYMove = 0;
-
   epigenome_t epigenome { {}, {}, {} };
-
-  motion_t
-  getMotion ()
-  {
-    return dir.getMotion (speed);
-  }
+  square_t* sqr;
 
   void
   update ()
   {
-    auto rates = epigenome.evaluate (substance);
+    // CHANGED: reset velocity each tick so output rates don't accumulate
+    velocity.dx = 0;
+    velocity.dy = 0;
 
+    auto rates = epigenome.evaluate (sqr->sediment);
     for (auto& [polymer, rate] : rates)
     {
-      long delta = static_cast<long> (rate);
-      long current = substance[polymer];
-      substance.data[polymer] =
-        std::clamp (current + delta, 0L, substance_t::MAX_VAL);
+      if (polymer.a ())
+        velocity.dx += rate;
+      else if (polymer.b ())
+        velocity.dy += rate;
     }
+
+    // CHANGED: gain energy from c concentration, lose one per tick
+    // cells sitting in c will survive, cells without it will die
+    energy += static_cast<long> (sqr->sediment.concentrationOf ('c') * 10.0f);
     --energy;
   }
-};
 
-struct square_t
-{
-  motion_t flow {};
-  bool isFlowSrc = false;
-  substance_t sediment {};
-  cell_t* cell = nullptr;
+  void
+  randomizeEpigenome (epigenome_t& parentEpigenome)
+  {
+    // CHANGED: full implementation
+    // sizes taken from parent so child topology matches
+    const size_t nInput = parentEpigenome.inputLayer.size ();
+    const size_t nMiddle = parentEpigenome.middleLayer.size ();
+    const size_t nOutput = parentEpigenome.outputLayer.size ();
+
+    // reserve before wiring so pointers never invalidate
+    epigenome.inputLayer.clear ();
+    epigenome.middleLayer.clear ();
+    epigenome.outputLayer.clear ();
+    epigenome.inputLayer.reserve (nInput);
+    epigenome.middleLayer.reserve (nMiddle);
+    epigenome.outputLayer.reserve (nOutput);
+
+    const float mutationStrength = 0.1f;
+
+    auto mutate = [&] (float parentVal, float scale) -> float
+    {
+      // gaussian-ish mutation via sum of two uniforms, centered on parent value
+      float noise = ((float) std::rand () / RAND_MAX - 0.5f) +
+                    ((float) std::rand () / RAND_MAX - 0.5f);
+      return parentVal + noise * mutationStrength * scale;
+    };
+
+    // input layer — copy vals from parent, no wiring needed
+    for (size_t i = 0; i < nInput; ++i)
+    {
+      node_t<polymer_t> node;
+      node.val = parentEpigenome.inputLayer[i].val;
+      node.bias = mutate (parentEpigenome.inputLayer[i].bias, 1.0f);
+      epigenome.inputLayer.push_back (node);
+    }
+
+    // middle layer — wire to input layer
+    float middleScale = 1.0f / std::sqrt ((float) nInput);
+    for (size_t i = 0; i < nMiddle; ++i)
+    {
+      node_t<polymer_t> node;
+      node.val = parentEpigenome.middleLayer[i].val;
+      node.bias = mutate (parentEpigenome.middleLayer[i].bias, middleScale);
+      node.inputs.reserve (nInput);
+      node.weights.reserve (nInput);
+      for (size_t j = 0; j < nInput; ++j)
+      {
+        node.inputs.push_back (&epigenome.inputLayer[j]);
+        float parentWeight = parentEpigenome.middleLayer[i].weights[j];
+        node.weights.push_back (mutate (parentWeight, middleScale));
+      }
+      epigenome.middleLayer.push_back (node);
+    }
+
+    // output layer — wire to middle layer
+    float outputScale = 1.0f / std::sqrt ((float) nMiddle);
+    for (size_t i = 0; i < nOutput; ++i)
+    {
+      node_t<polymer_t> node;
+      node.val = parentEpigenome.outputLayer[i].val;
+      node.bias = mutate (parentEpigenome.outputLayer[i].bias, outputScale);
+      node.inputs.reserve (nMiddle);
+      node.weights.reserve (nMiddle);
+      for (size_t j = 0; j < nMiddle; ++j)
+      {
+        node.inputs.push_back (&epigenome.middleLayer[j]);
+        float parentWeight = parentEpigenome.outputLayer[i].weights[j];
+        node.weights.push_back (mutate (parentWeight, outputScale));
+      }
+      epigenome.outputLayer.push_back (node);
+    }
+  }
+
+  void
+  randomizeEpigenome ()
+  {
+    const size_t nInput = 3; // a, b, c
+    const size_t nMiddle = 4;
+    const size_t nOutput = 2; // dx, dy
+
+    epigenome.inputLayer.clear ();
+    epigenome.middleLayer.clear ();
+    epigenome.outputLayer.clear ();
+    epigenome.inputLayer.reserve (nInput);
+    epigenome.middleLayer.reserve (nMiddle);
+    epigenome.outputLayer.reserve (nOutput);
+
+    // input layer — a, b, c positionally, no wiring
+    for (size_t i = 0; i < nInput; ++i)
+    {
+      node_t<polymer_t> node;
+      node.bias = 0.0f;
+      epigenome.inputLayer.push_back (node);
+    }
+
+    // middle layer — wired to all inputs
+    // bias toward reading c (input index 2) by giving that weight a head start
+    float middleScale = 1.0f / std::sqrt ((float) nInput);
+    for (size_t i = 0; i < nMiddle; ++i)
+    {
+      node_t<polymer_t> node;
+      node.bias = 0.0f;
+      node.inputs.reserve (nInput);
+      node.weights.reserve (nInput);
+      for (size_t j = 0; j < nInput; ++j)
+      {
+        node.inputs.push_back (&epigenome.inputLayer[j]);
+        // CHANGED: weight for c (j==2) is strongly negative so high c
+        // concentration suppresses middle node activation, which will
+        // suppress movement in the output layer
+        float w = (j == 2) ? -2.0f : middleScale;
+        node.weights.push_back (w);
+      }
+      epigenome.middleLayer.push_back (node);
+    }
+
+    // output layer — wired to all middle nodes
+    // positive weights mean active middle nodes (low c) produce movement
+    float outputScale = 1.0f / std::sqrt ((float) nMiddle);
+    for (size_t i = 0; i < nOutput; ++i)
+    {
+      node_t<polymer_t> node;
+      node.val = (i == 0) ? polymer_t { 0x03 << 8 } : polymer_t { 0x03 << 4 };
+      node.bias = 0.0f;
+      node.inputs.reserve (nMiddle);
+      node.weights.reserve (nMiddle);
+      for (size_t j = 0; j < nMiddle; ++j)
+      {
+        node.inputs.push_back (&epigenome.middleLayer[j]);
+        // small random sign variation so dx and dy aren't identical,
+        // giving the cell some directional diversity to evolve from
+        float sign = (std::rand () % 2 == 0) ? 1.0f : -1.0f;
+        node.weights.push_back (sign * outputScale);
+      }
+      epigenome.outputLayer.push_back (node);
+    }
+  }
 };
 
 inline std::ostream&

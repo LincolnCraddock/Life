@@ -46,6 +46,16 @@ updateCells (std::vector<std::vector<square_t>>& world);
 void
 moveCells (std::vector<std::vector<square_t>>& world, unsigned long time);
 
+void
+birthCells (std::vector<std::vector<square_t>>& world);
+
+void
+placeSediment (std::vector<std::vector<square_t>>& world);
+
+std::set<point_t> flowSrcs;
+std::vector<char> flowSrcTypes;
+std::set<point_t> flowSinks;
+
 Model::Model (settings_t settings)
     : m_settings (settings),
       m_world (settings.height, std::vector<square_t> (settings.width)),
@@ -70,6 +80,7 @@ Model::Model (settings_t settings)
   std::uniform_int_distribution<size_t> randY (0, m_settings.height - 1);
   std::uniform_int_distribution<long> randSediment (
     0, m_settings.maxStartSediment);
+  std::uniform_int_distribution<char> randSedimentType ('a', 'c');
 
   /* Generate world */
   for (size_t x = 0; x < m_settings.width; ++x)
@@ -80,10 +91,13 @@ Model::Model (settings_t settings)
         zeroToOne (rng) < m_settings.freqStartSediment ? randSediment (rng) : 0
       };
 
-  std::set<point_t> flowSrcs;
+  // std::set<point_t> flowSrcs;
+  // std::vector<char> flowSrcTypes (m_settings.numFlowSrcs);
   while (flowSrcs.size () < m_settings.numFlowSrcs)
-    flowSrcs.insert ({ randX (rng), randY (rng) });
-  std::set<point_t> flowSinks;
+  {
+    if (flowSrcs.insert ({ randX (rng), randY (rng) }).second)
+      flowSrcTypes.push_back (randSedimentType (rng));
+  }
   while (flowSinks.size () < m_settings.numFlowSinks)
     if (point_t sink { randX (rng), randY (rng) };
         flowSrcs.find (sink) == flowSrcs.end ())
@@ -120,6 +134,8 @@ Model::Model (settings_t settings)
       loc = { randX (rng), randY (rng) };
     } while (m_world[loc.y][loc.x].cell);
     m_world[loc.y][loc.x].cell = new cell_t {};
+    m_world[loc.y][loc.x].cell->randomizeEpigenome ();
+    m_world[loc.y][loc.x].cell->sqr = &m_world[loc.y][loc.x];
   }
 }
 
@@ -130,10 +146,12 @@ Model::step ()
 
   // moveSediment (m_world);
   // diffuseSediment (m_world);
+  placeSediment (m_world);
   diffuseSediment2 (m_world);
 
-  // updateCells (m_world);
+  updateCells (m_world);
   moveCells (m_world, m_time);
+  birthCells (m_world);
 }
 
 const std::vector<std::vector<square_t>>&
@@ -378,7 +396,8 @@ moveCells (std::vector<std::vector<square_t>>& world, unsigned long time)
       cell_t* cell = world[y][x].cell;
       if (cell != nullptr)
       {
-        motion_t cellMove = cell->getMotion () + world[y][x].flow;
+        // motion_t cellMove = cell->getMotion () + world[y][x].flow;
+        motion_t cellMove = cell->velocity + world[y][x].flow;
 
         short dx = time - cell->timeOfLastXMove < 1 / cellMove.dx ? 0
                    : cellMove.dx == 0                             ? 0
@@ -402,4 +421,52 @@ moveCells (std::vector<std::vector<square_t>>& world, unsigned long time)
   for (size_t x = 0; x < width; ++x)
     for (size_t y = 0; y < height; ++y)
       world[y][x].cell = newCells[y][x];
+}
+
+void
+birthCells (std::vector<std::vector<square_t>>& world)
+{
+  static std::mt19937_64 rng (0);
+  static std::uniform_int_distribution<short> randDelta (-1, 1);
+  size_t height = world.size ();
+  size_t width = height > 0 ? world[0].size () : 0;
+  for (size_t y = 0; y < height; ++y)
+    for (size_t x = 0; x < width; ++x)
+    {
+      cell_t* cell = world[y][x].cell;
+      if (cell != nullptr && cell->energy > 250)
+      {
+        short dx = randDelta (rng);
+        short dy = randDelta (rng);
+        if (world[addMod (y, dy, height)][addMod (x, dx, width)].cell ==
+            nullptr)
+        {
+          world[addMod (y, dy, height)][addMod (x, dx, width)].cell =
+            new cell_t {};
+          world[addMod (y, dy, height)][addMod (x, dx, width)]
+            .cell->randomizeEpigenome (world[y][x].cell->epigenome);
+          world[addMod (y, dy, height)][addMod (x, dx, width)].cell->sqr =
+            &world[addMod (y, dy, height)][addMod (x, dx, width)];
+          world[y][x].cell->energy -= 250;
+        }
+      }
+    }
+}
+
+void
+placeSediment (std::vector<std::vector<square_t>>& world)
+{
+  int idx = 0;
+  for (auto [x, y] : flowSrcs)
+  {
+    world[y][x].sediment +=
+      flowSrcTypes[idx] == 'a'   ? substance_t { 1'000, 0, 0 }
+      : flowSrcTypes[idx] == 'b' ? substance_t { 0, 1'000, 0 }
+                                 : substance_t { 0, 0, 1'000 };
+    ++idx;
+  }
+  for (auto [x, y] : flowSinks)
+  {
+    world[y][x].sediment = substance_t {};
+  }
 }
