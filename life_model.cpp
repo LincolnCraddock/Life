@@ -399,14 +399,14 @@ moveCells (std::vector<std::vector<square_t>>& world, unsigned long time)
         // motion_t cellMove = cell->getMotion () + world[y][x].flow;
         motion_t cellMove = cell->velocity + world[y][x].flow;
 
-        short dx = time - cell->timeOfLastXMove < 1 / cellMove.dx ? 0
-                   : cellMove.dx == 0                             ? 0
-                   : std::signbit (cellMove.dx)                   ? -1
-                                                                  : 1;
-        short dy = time - cell->timeOfLastYMove < 1 / cellMove.dy ? 0
-                   : cellMove.dy == 0                             ? 0
-                   : std::signbit (cellMove.dy)                   ? -1
-                                                                  : 1;
+        short dx = cellMove.dx == 0                                 ? 0
+                   : time - cell->timeOfLastXMove < 1 / cellMove.dx ? 0
+                   : std::signbit (cellMove.dx)                     ? -1
+                                                                    : 1;
+        short dy = cellMove.dy == 0                                 ? 0
+                   : time - cell->timeOfLastYMove < 1 / cellMove.dy ? 0
+                   : std::signbit (cellMove.dy)                     ? -1
+                                                                    : 1;
         if (world[addMod (y, dy, height)][addMod (x, dx, width)].cell !=
               nullptr ||
             newCells[addMod (y, dy, height)][addMod (x, dx, width)] != nullptr)
@@ -415,6 +415,8 @@ moveCells (std::vector<std::vector<square_t>>& world, unsigned long time)
           dy = 0;
         }
         newCells[addMod (y, dy, height)][addMod (x, dx, width)] = cell;
+        cell->timeOfLastXMove = time;
+        cell->timeOfLastYMove = time;
       }
     }
 

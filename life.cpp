@@ -69,6 +69,9 @@
       << BOLD_ESC << "      --no-config\n"                                     \
       << DEFAULT_STYLE_ESC                                                     \
       << "         Ignores the config file at .life.yaml.\n"                   \
+      << BOLD_ESC << "  -q, --quiet\n"                                         \
+      << DEFAULT_STYLE_ESC                                                     \
+      << "         Avoids updating the view unnecessarily.\n"                  \
       << BOLD_ESC << "  -s, --size LENGTH[, HEIGHT]\n"                         \
       << DEFAULT_STYLE_ESC                                                     \
       << "         Sets both side lengths of the world to LENGTH (default\n"   \
@@ -187,7 +190,8 @@ main (int argc, char* argv[])
   Model model (settings);
   View view (&model);
 
-  view.update ();
+  if (!settings.beQuiet)
+    view.update ();
 
   /* Main loop */
   bool exit = false;
@@ -297,39 +301,40 @@ parseConfigPathsFromArgs (int argc, char* argv[])
 bool
 parseSettingsFromConfig (const std::string& pathToFile, settings_t& settings)
 {
-  std::optional<std::string> txt = fileToString (pathToFile);
-  if (!txt.has_value ())
-    return false;
+  // std::optional<std::string> txt = fileToString (pathToFile);
+  // if (!txt.has_value ())
+  //   return false;
 
-  styml::Document root;
-  try
-  {
-    root = styml::parse (txt.value ());
-  }
-  catch (styml::ParseException& e)
-  {
-    EXIT_WITH_ERROR (e.what ());
-  }
+  // styml::Document root;
+  // try
+  // {
+  //   root = styml::parse (txt.value ());
+  // }
+  // catch (styml::ParseException& e)
+  // {
+  //   EXIT_WITH_ERROR (e.what ());
+  // }
 
-  if (root["version"].as<std::string> () != CONFIG_VERSION)
-    EXIT_WITH_ERROR (pathToFile +
-                     " has an unsupported version number.\n"
-                     "The version must be " +
-                     CONFIG_VERSION);
-  if (root.hasKey ("width"))
-    settings.width = root["width"].as<size_t> ();
-  if (root.hasKey ("height"))
-    settings.height = root["height"].as<size_t> ();
-  if (root.hasKey ("flow_sources"))
-    settings.numFlowSrcs = root["flow_srcs"].as<unsigned> ();
-  if (root.hasKey ("flow_sinks"))
-    settings.numFlowSinks = root["flow_sinks"].as<unsigned> ();
-  if (root.hasKey ("start_cells"))
-    settings.numStartCells = root["start_cells"].as<unsigned> ();
-  if (root.hasKey ("seed"))
-    settings.seed = root["seed"].as<unsigned> ();
+  // if (root["version"].as<std::string> () != CONFIG_VERSION)
+  //   EXIT_WITH_ERROR (pathToFile +
+  //                    " has an unsupported version number.\n"
+  //                    "The version must be " +
+  //                    CONFIG_VERSION);
+  // if (root.hasKey ("width"))
+  //   settings.width = root["width"].as<size_t> ();
+  // if (root.hasKey ("height"))
+  //   settings.height = root["height"].as<size_t> ();
+  // if (root.hasKey ("flow_sources"))
+  //   settings.numFlowSrcs = root["flow_srcs"].as<unsigned> ();
+  // if (root.hasKey ("flow_sinks"))
+  //   settings.numFlowSinks = root["flow_sinks"].as<unsigned> ();
+  // if (root.hasKey ("start_cells"))
+  //   settings.numStartCells = root["start_cells"].as<unsigned> ();
+  // if (root.hasKey ("seed"))
+  //   settings.seed = root["seed"].as<unsigned> ();
 
-  return true;
+  // return true;
+  return false;
 }
 
 void
@@ -355,11 +360,13 @@ parseSettingsFromArgs (int argc, char* argv[], settings_t& settings)
                                  option { "config", 2, &longOpt, 4 },
                                  option { "no-config", 0, &longOpt, 5 },
                                  option { "gen-config", 2, &longOpt, 6 },
+                                 option { "walls", 2, &longOpt, 7 },
+                                 option { "quiet", 0, NULL, 'q' },
                                  option { 0, 0, 0, 0 } };
-  const int numLongOptions = 9;
+  const int numLongOptions = 11;
   while (true)
   {
-    switch (opt = getopt_long (argc, argv, "-:s:C:h", longOptions, NULL))
+    switch (opt = getopt_long (argc, argv, "-:s:C:qh", longOptions, NULL))
     {
       // case h handled by parseConfigFromArgs
       case 's':
@@ -425,6 +432,16 @@ parseSettingsFromArgs (int argc, char* argv[], settings_t& settings)
           EXIT_WITH_USAGE_ERROR ('C', ARG_ERR (3));
         else if (ptr != end || ec != std::errc ())
           EXIT_WITH_USAGE_ERROR ('C', ARG_ERR (2));
+        break;
+      }
+      case 'q':
+      {
+        prevOpt = 'q';
+        longOpt = 0;
+        numArgsPrevOpt = 0;
+
+        settings.beQuiet = true;
+
         break;
       }
       case 1:
@@ -585,6 +602,11 @@ parseSettingsFromArgs (int argc, char* argv[], settings_t& settings)
             // case 4 handled by parseConfigFromArgs
             // case 5 handled by parseConfigFromArgs
             // case 6 handled by parseConfigFromArgs
+          case 4:
+          {
+            // if (optarg)
+            //   settings.wallsGenThreshold = 0.5f;
+          }
         }
         break;
       }
@@ -599,6 +621,7 @@ parseSettingsFromArgs (int argc, char* argv[], settings_t& settings)
         std::string unknownOpt = argv[optind - 1];
         if (unknownOpt[0] == '-' && unknownOpt[1] == '-')
         {
+          // long opt
           std::string name = unknownOpt.substr (2);
           for (int i = 0; i < numLongOptions; ++i)
           {
@@ -609,7 +632,7 @@ parseSettingsFromArgs (int argc, char* argv[], settings_t& settings)
 
           EXIT_WITH_USAGE_ERROR (name, ARG_ERR (1));
         }
-        else
+        else // single-char opt
           EXIT_WITH_USAGE_ERROR ((char) optopt, ARG_ERR (1));
         break;
       }
@@ -619,6 +642,7 @@ parseSettingsFromArgs (int argc, char* argv[], settings_t& settings)
         std::string unknownOpt = argv[optind - 1];
         if (unknownOpt[0] == '-' && unknownOpt[1] == '-')
         {
+          // long opt
           size_t i = unknownOpt.find ('=');
           std::string name =
             unknownOpt.substr (2, std::min (i, unknownOpt.size ()) - 2);
@@ -644,7 +668,7 @@ parseSettingsFromArgs (int argc, char* argv[], settings_t& settings)
 
           EXIT_WITH_USAGE_ERROR (name, OPT_ERR (0));
         }
-        else
+        else // single-char opt
           EXIT_WITH_USAGE_ERROR ((char) optopt, OPT_ERR (0));
       }
     }

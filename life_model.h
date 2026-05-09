@@ -22,8 +22,11 @@ struct settings_t
   unsigned numFlowSinks = 1;
   unsigned numStartCells = 100;
   long maxStartSediment = 1'000'000'000;
-  float freqStartSediment = 0.003;
+  float freqStartSediment = 0.003f;
   unsigned seed = 0;
+  float wallsGenThreshold = 0.0f;
+  bool beQuiet = false;
+  const std::string PROGRAM_VERSION = "1.0.0";
 };
 
 struct point_t

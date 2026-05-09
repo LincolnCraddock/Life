@@ -731,6 +731,11 @@ printModelComponents (const std::string& components, const Model& model)
       std::cout << BOLD_ESC << "Help:\n" << DEFAULT_STYLE_ESC;
       printHelp ();
     }
+    else if (arg == "--version" || arg == "version")
+    {
+      std::cout << BOLD_ESC << "Version: " << DEFAULT_STYLE_ESC
+                << model.settings ().PROGRAM_VERSION << std::endl;
+    }
     else
     {
       std::cout << RED_ESC << "I don't know how to print " << arg << "."
